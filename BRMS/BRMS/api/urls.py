@@ -1,5 +1,11 @@
 # File: accounts/api/urls.py
 from rest_framework.routers import DefaultRouter
+from django.urls import path, include
+from rest_framework_simplejwt.views import (
+    TokenObtainPairView,
+    TokenRefreshView,
+    TokenVerifyView
+)
 from accounts.views import (
     UserViewSet, ProfileViewSet, TenantViewSet
 )
@@ -16,8 +22,8 @@ accounts_router.register(r'tenants', TenantViewSet)
 
 # File: BRMS/api/urls.py (main app)
 from rest_framework.routers import DefaultRouter
-from ..views import (
-    LandlordViewSet, ApartmentTypeViewSet, HouseTypeViewSet, 
+from .views import (
+    LandlordViewSet,TenantViewSet, ApartmentTypeViewSet, HouseTypeViewSet, 
     ApartmentViewSet, HouseViewSet, HouseBookingViewSet, InvoiceViewSet
 )
 
@@ -25,6 +31,7 @@ from ..views import (
 brms_router = DefaultRouter()
 
 # Register BRMS viewsets
+brms_router.register(r'tenants', TenantViewSet)
 brms_router.register(r'landlords', LandlordViewSet)
 brms_router.register(r'apartment-types', ApartmentTypeViewSet)
 brms_router.register(r'house-types', HouseTypeViewSet)
@@ -51,8 +58,12 @@ router.registry.extend(brms_router.registry)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+
+      path('', include(accounts_router.urls)),
+
     # API endpoints
     path('api/', include(router.urls)),
+    
     # DRF auth
     path('api/auth/', include('rest_framework.urls')),
     # Other URL patterns...

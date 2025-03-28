@@ -1,9 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Dashboard from "./pages/Dashboard";
-import LandlordDashboard from "./pages/LandlordDashboard";
 import Houses from "./pages/Houses";
-import Login from "./pages/Login";
 import Bookings from "./pages/Bookings";
 import BookingForm from "./components/BookingForm";
 import Invoices from "./pages/Invoices";
@@ -34,25 +32,9 @@ const App = () => {
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
+      
 
         {/* Landlord Protected Routes */}
-        <Route
-          path="/landlord-dashboard"
-          element={
-            <ProtectedRoute requiredRole="landlord">
-              <LandlordDashboard />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoute requiredRole="landlord">
-              <Dashboard />
-            </ProtectedRoute>
-          }
-        />
         <Route
           path="/houses"
           element={

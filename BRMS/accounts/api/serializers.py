@@ -1,46 +1,79 @@
 from rest_framework import serializers
 from django.contrib.auth.models import User
+from django.contrib.auth.password_validation import validate_password
 from ..models import (
     Profile, Landlord, Tenant, ApartmentType, Apartment,
     HouseType, House, HouseBooking, Invoice
 )
 
-# User Serializer 
-from django.contrib.auth.models import User
-from rest_framework import serializers
-
 class UserSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(write_only=True)  # Ensure password is write-only
+    password = serializers.CharField(
+        write_only=True, 
+        required=True, 
+        validators=[validate_password]
+    )
+    password_confirm = serializers.CharField(
+        write_only=True, 
+        required=True
+    )
 
     class Meta:
         model = User
-        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'password']
-    
+        fields = ['id', 'username', 'email', 'first_name', 'last_name', 'password', 'password_confirm']
+        extra_kwargs = {
+            'username': {'required': True},
+            'email': {'required': True}
+        }
+
+    def validate(self, attrs):
+        """
+        Validate that passwords match and meet requirements
+        """
+        if attrs['password'] != attrs.pop('password_confirm'):
+            raise serializers.ValidationError({"password": "Passwords do not match."})
+        
+        return attrs
+
     def create(self, validated_data):
-        """Ensure password is hashed when creating a user"""
-        password = validated_data.pop('password')
-        user = User(**validated_data)
-        user.set_password(password)  # Hash password before saving
-        user.save()
-        return user
+        try:
+            # Ensure all required fields are present
+            if not all(key in validated_data for key in ['username', 'email']):
+                raise serializers.ValidationError("Username and email are required")
 
+            # Check if username already exists
+            if User.objects.filter(username=validated_data['username']).exists():
+                raise serializers.ValidationError({"username": "A user with this username already exists."})
 
-# Profile Serializer
+            # Check if email already exists
+            if User.objects.filter(email=validated_data['email']).exists():
+                raise serializers.ValidationError({"email": "A user with this email already exists."})
+
+            # Create user with hashed password
+            user = User.objects.create_user(
+                username=validated_data['username'],
+                email=validated_data['email'],
+                first_name=validated_data.get('first_name', ''),
+                last_name=validated_data.get('last_name', ''),
+                password=validated_data['password']
+            )
+            return user
+        except Exception as e:
+            # Log the full error for server-side debugging
+            print(f"User creation error: {str(e)}")
+            raise serializers.ValidationError(str(e))
+
 class ProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only=True)
     
-    # This will exclude the country field from serialization
     class Meta:
         model = Profile
         exclude = ['country']
         
-    # Then add it back as a string representation
     country_name = serializers.SerializerMethodField()
     
     def get_country_name(self, obj):
         return str(obj.country) if hasattr(obj, 'country') and obj.country else None
 
-# Landlord Serializer
 class LandlordSerializer(serializers.ModelSerializer):
     class Meta:
         model = Landlord
@@ -50,36 +83,51 @@ class LandlordSerializer(serializers.ModelSerializer):
             'physical_address', 'aob', 'date_added'
         ]
 
-# Tenant Serializer
 class TenantSerializer(serializers.ModelSerializer):
-    user = UserSerializer(read_only=True)
-    full_name = serializers.SerializerMethodField()
-    email = serializers.EmailField(source='user.email', read_only=True)
-    
+    user_first_name = serializers.CharField(source='user.first_name', read_only=True, required=False)
+    user_last_name = serializers.CharField(source='user.last_name', read_only=True, required=False)
+
     class Meta:
         model = Tenant
         fields = [
-            'id', 'user', 'full_name', 'id_number_or_passport',
-            'email', 'phone_number', 'physical_address', 'occupation',
-            'workplace', 'emergency_contact_phone', 'date_added'
+            'id', 
+            'user', 
+            'user_first_name', 
+            'user_last_name',
+            'id_number_or_passport', 
+            'phone_number', 
+            'physical_address', 
+            'occupation', 
+            'workplace', 
+            'emergency_contact_phone',
+            'date_added'
         ]
-    
-    def get_full_name(self, obj):
-        return f"{obj.user.first_name} {obj.user.last_name}"
+        extra_kwargs = {
+            'user': {'required': False},
+            'id_number_or_passport': {'required': False},
+        }
 
-# ApartmentType Serializer
+    def create(self, validated_data):
+        request = self.context.get('request')
+        
+        if not request:
+            return Tenant.objects.create(**validated_data)
+        
+        if 'user' not in validated_data:
+            validated_data['user'] = request.user
+        
+        return Tenant.objects.create(**validated_data)
+
 class ApartmentTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = ApartmentType
         fields = '__all__'
 
-# HouseType Serializer
 class HouseTypeSerializer(serializers.ModelSerializer):
     class Meta:
         model = HouseType
         fields = '__all__'
 
-# Apartment Serializer
 class ApartmentSerializer(serializers.ModelSerializer):
     owner = LandlordSerializer(read_only=True)
     apartment_type = ApartmentTypeSerializer(read_only=True)
@@ -88,7 +136,6 @@ class ApartmentSerializer(serializers.ModelSerializer):
         model = Apartment
         fields = '__all__'
 
-# House Serializer
 class HouseSerializer(serializers.ModelSerializer):
     apartment = ApartmentSerializer(read_only=True)
     house_type = HouseTypeSerializer(read_only=True)
@@ -98,7 +145,6 @@ class HouseSerializer(serializers.ModelSerializer):
         model = House
         fields = '__all__'
 
-# HouseBooking Serializer
 class HouseBookingSerializer(serializers.ModelSerializer):
     house = HouseSerializer(read_only=True)
     tenant = TenantSerializer(read_only=True)
@@ -106,8 +152,18 @@ class HouseBookingSerializer(serializers.ModelSerializer):
     class Meta:
         model = HouseBooking
         fields = '__all__'
+    
+    def validate(self, attrs):
+        """
+        Additional validation for house bookings
+        Ensures house is available and validates booking details
+        """
+        house = attrs.get('house')
+        if house and house.status != 'vacant':
+            raise serializers.ValidationError("This house is not available for booking")
+        
+        return attrs
 
-# Invoice Serializer
 class InvoiceSerializer(serializers.ModelSerializer):
     tenant = TenantSerializer(read_only=True)
     house = HouseSerializer(read_only=True)
@@ -115,3 +171,16 @@ class InvoiceSerializer(serializers.ModelSerializer):
     class Meta:
         model = Invoice
         fields = '__all__'
+    
+    def validate(self, attrs):
+        """
+        Additional validation for invoices
+        Ensures tenant is assigned to the house and validates invoice details
+        """
+        tenant = attrs.get('tenant')
+        house = attrs.get('house')
+        
+        if tenant and house and house.tenant != tenant:
+            raise serializers.ValidationError("Invoice tenant must match house tenant")
+        
+        return attrs

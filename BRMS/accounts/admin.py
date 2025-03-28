@@ -38,9 +38,10 @@ class HouseTypeAdmin(ImportExportModelAdmin):
 
 @admin.register(House)
 class HouseAdmin(ImportExportModelAdmin):
-    list_filter = ('apartment', 'number', 'monthly_rent', 'occupied', 'date_added')
+    # Remove or correct the 'occupied' field
+    list_filter = ('apartment', 'number', 'monthly_rent', 'date_added')
     search_fields = ('number', 'description')
-    list_display = ('number', 'apartment', 'monthly_rent', 'deposit_amount', 'house_type', 'occupied', 'tenant')
+    list_display = ('number', 'apartment', 'monthly_rent', 'deposit_amount', 'house_type', 'tenant')
 
 @admin.register(Landlord)
 class LandlordAdmin(ImportExportModelAdmin):

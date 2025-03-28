@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import axios from "axios";
+
+
 import {
   AppBar,
   Toolbar,
@@ -31,6 +32,9 @@ import {
   Menu as MenuIcon,
   Close as CloseIcon,
 } from "@mui/icons-material";
+
+import LoginForm from "./auth/LoginForm";
+import RegisterForm from "./auth/RegisterForm";
 
 import welcomeImage from "../assets/welcome-background.jpg";
 import aboutUsImage from "../assets/about-us-image.jpg";
@@ -115,204 +119,55 @@ const Home = () => {
     message: "",
   });
 
-  const [loginData, setLoginData] = useState({
-    email: "",
-    password: "",
-  });
-
-  const [signupData, setSignupData] = useState({
-    fullName: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
-
+  // State for managing dialog and tabs
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [tabValue, setTabValue] = useState(0);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [loginError, setLoginError] = useState("");
-  const [signupError, setSignupError] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Input validation functions
-  const validateEmail = (email) => {
-    const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return re.test(String(email).toLowerCase());
-  };
-
-  const validatePassword = (password) => {
-    // At least 8 characters, one uppercase, one lowercase, one number
-    const re = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d]{8,}$/;
-    return re.test(password);
-  };
-
+  // Contact form input handler
   const handleContactInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData((prevState) => ({
-      ...prevState,
-      [name]: value,
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleContactSubmit = async (e) => {
+  // Contact form submit handler
+  const handleContactSubmit = (e) => {
     e.preventDefault();
-    try {
-      // Implement contact form submission logic
-      console.log("Contact form submitted", formData);
-      // You would typically send this data to a backend API
-    } catch (error) {
-      console.error("Contact form submission error", error);
-    }
+    // Implement contact form submission logic
+    console.log("Contact Form Submitted", formData);
   };
 
-  const handleLoginInputChange = (e) => {
-    const { name, value } = e.target;
-    setLoginData((prevState) => ({
-      ...prevState,
-      [name]: value,
-    }));
-    // Clear previous login errors when user starts typing
-    setLoginError("");
-  };
-
-  const handleSignupInputChange = (e) => {
-    const { name, value } = e.target;
-    setSignupData((prevState) => ({
-      ...prevState,
-      [name]: value,
-    }));
-    setSignupError("");
-  };
-
-  const handleLoginSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-    setLoginError("");
-
-    try {
-      // Validate input
-      if (!loginData.email || !loginData.password) {
-        setLoginError("Please enter both email and password");
-        setIsLoading(false);
-        return;
-      }
-
-      // Attempt login
-      const response = await axios.post('/api/login/', {
-        email: loginData.email,
-        password: loginData.password
-      });
-
-      // Successful login
-      const { token, user } = response.data;
-
-      // Store token in localStorage
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('user', JSON.stringify(user));
-
-      // Reset login form and close dialog
-      setLoginData({ email: "", password: "" });
-      handleDashboardClose();
-
-      // Optional: Redirect to dashboard or update app state
-      // history.push('/dashboard');
-      alert('Login Successful!');
-
-    } catch (error) {
-      // Handle login errors
-      const errorMessage = error.response?.data?.error || 
-                           'Login failed. Please check your credentials.';
-      setLoginError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSignupSubmit = async (e) => {
-    e.preventDefault();
-    setSignupError("");
-
-    // Comprehensive validation
-    if (!signupData.fullName) {
-      setSignupError("Full Name is required");
-      return;
-    }
-
-    if (!validateEmail(signupData.email)) {
-      setSignupError("Invalid email format");
-      return;
-    }
-
-    if (!validatePassword(signupData.password)) {
-      setSignupError("Password must be at least 8 characters, include uppercase, lowercase, and number");
-      return;
-    }
-
-    if (signupData.password !== signupData.confirmPassword) {
-      setSignupError("Passwords do not match");
-      return;
-    }
-
-    try {
-      const Response = await axios.post('/api/signup/', {
-        fullName: signupData.fullName,
-        email: signupData.email,
-        password: signupData.password
-      });
-
-      alert('Signup Successful! Please log in.');
-      
-      // Reset signup form and switch to login tab
-      setSignupData({
-        fullName: "",
-        email: "",
-        password: "",
-        confirmPassword: ""
-      });
-      setTabValue(0);
-
-    } catch (error) {
-      console.error("Signup error", error);
-      const errorMessage = error.response?.data?.error || 'Signup failed';
-      setSignupError(errorMessage);
-    }
-  };
-
+  // Handler to open dashboard dialog
   const handleDashboardOpen = () => {
     setDashboardOpen(true);
   };
 
+  // Handler to close dashboard dialog
   const handleDashboardClose = () => {
     setDashboardOpen(false);
-    // Reset login error and form when closing
-    setLoginError("");
-    setLoginData({ email: "", password: "" });
   };
 
+  // Handler for tab changes
   const handleTabChange = (event, newValue) => {
     setTabValue(newValue);
-    // Clear any previous errors when switching tabs
-    setLoginError("");
-    setSignupError("");
   };
 
+  // Mobile menu toggle handler
   const toggleMobileMenu = () => {
-    setMobileMenuOpen(!mobileMenuOpen);
+    // Implement mobile menu toggle logic
   };
 
   return (
     <ThemeProvider theme={Theme}>
-       <AppBar 
-      position="fixed"  // This is the key prop to keep the navbar fixed
-      color="primary"
-      sx={{
-        zIndex: 1000,  // Ensures navbar stays on top of other content
-        top: 0,        // Positions at the top of the screen
-        left: 0,       // Ensures full width
-        right: 0       // Ensures full width
-      }}
-    >
-
+      <AppBar 
+        position="fixed"
+        color="primary"
+        sx={{
+          zIndex: 1000,
+          top: 0,
+          left: 0,
+          right: 0
+        }}
+      >
         <Toolbar>
           <Typography
             variant="h5"
@@ -338,7 +193,7 @@ const Home = () => {
             </Box>
           )}
         </Toolbar>
-        </AppBar>
+      </AppBar>
 
       <main
         style={{
@@ -598,130 +453,10 @@ const Home = () => {
         </DialogTitle>
         <DialogContent>
           {tabValue === 0 && (
-            <Box component="form" onSubmit={handleLoginSubmit} sx={{ mt: 2 }}>
-              {loginError && (
-                <Box 
-                  sx={{ 
-                    backgroundColor: 'error.light', 
-                    color: 'error.contrastText',
-                    p: 2,
-                    mb: 2,
-                    borderRadius: 1
-                  }}
-                >
-                  {loginError}
-                </Box>
-              )}
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                label="Email Address"
-                name="email"
-                autoComplete="email"
-                autoFocus
-                variant="outlined"
-                value={loginData.email}
-                onChange={handleLoginInputChange}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="password"
-                label="Password"
-                type="password"
-                autoComplete="current-password"
-                variant="outlined"
-                value={loginData.password}
-                onChange={handleLoginInputChange}
-              />
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                color="primary"
-                disabled={isLoading}
-                sx={{ mt: 3, mb: 2 }}
-              >
-                {isLoading ? 'Logging In...' : 'Login'}
-              </Button>
-              <Box sx={{ textAlign: 'center', mt: 2 }}>
-                <Button color="primary" variant="text">
-                  Forgot Password?
-                </Button>
-              </Box>
-            </Box>
+            <LoginForm />
           )}
           {tabValue === 1 && (
-            <Box component="form" onSubmit={handleSignupSubmit} sx={{ mt: 2 }}>
-              {signupError && (
-                <Box 
-                  sx={{ 
-                    backgroundColor: 'error.light', 
-                    color: 'error.contrastText',
-                    p: 2,
-                    mb: 2,
-                    borderRadius: 1
-                  }}
-                >
-                  {signupError}
-                </Box>
-              )}
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                label="Full Name"
-                name="fullName"
-                autoFocus
-                variant="outlined"
-                value={signupData.fullName}
-                onChange={handleSignupInputChange}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                label="Email Address"
-                name="email"
-                autoComplete="email"
-                variant="outlined"
-                value={signupData.email}
-                onChange={handleSignupInputChange}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="password"
-                label="Password"
-                type="password"
-                variant="outlined"
-                value={signupData.password}
-                onChange={handleSignupInputChange}
-              />
-              <TextField
-                margin="normal"
-                required
-                fullWidth
-                name="confirmPassword"
-                label="Confirm Password"
-                type="password"
-                variant="outlined"
-                value={signupData.confirmPassword}
-                onChange={handleSignupInputChange}
-              />
-              <Button
-                type="submit"
-                fullWidth
-                variant="contained"
-                color="primary"
-                sx={{ mt: 3, mb: 2 }}
-              >
-                Sign Up
-              </Button>
-            </Box>
+            <RegisterForm />
           )}
         </DialogContent>
         <DialogActions>

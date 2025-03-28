@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'rest_framework_simplejwt',
     'rest_framework',
     'corsheaders',
     'import_export',
@@ -44,14 +45,33 @@ INSTALLED_APPS = [
     
 ]
 
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',  # For registration endpoint
+    ]
+}
+
+from datetime import timedelta
+
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),  # Good default
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),     # Good default
+    'ROTATE_REFRESH_TOKENS': False,  # Consider setting to True for enhanced security
+    'BLACKLIST_AFTER_ROTATION': False,  # Consider enabling if using token rotation
+    'UPDATE_LAST_LOGIN': False,  # You could set to True to track user last login
+    'ALGORITHM': 'HS256',  # Recommended default
+    'SIGNING_KEY': '{{ your_secret_key }}',  # Ensure this is a strong, unique secret key
+    'AUTH_HEADER_TYPES': ('Bearer',),  # Standard JWT authentication header
+}
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Your frontend URL
+    "http://localhost:5173",
 ]
-
-# If you need cookies/credentials to be sent with requests
 CORS_ALLOW_CREDENTIALS = True
-
 # Optional: Specify which HTTP methods are allowed
 CORS_ALLOW_METHODS = [
     "DELETE",

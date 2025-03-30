@@ -38,7 +38,6 @@ class HouseTypeAdmin(ImportExportModelAdmin):
 
 @admin.register(House)
 class HouseAdmin(ImportExportModelAdmin):
-    # Remove or correct the 'occupied' field
     list_filter = ('apartment', 'number', 'monthly_rent', 'date_added')
     search_fields = ('number', 'description')
     list_display = ('number', 'apartment', 'monthly_rent', 'deposit_amount', 'house_type', 'tenant')
@@ -48,7 +47,6 @@ class LandlordAdmin(ImportExportModelAdmin):
     list_filter = ('date_added',)
     list_display = ['first_name', 'middle_name', 'id_number', 'email', 'phone_number']
     search_fields = ['first_name', 'middle_name', 'other_names', 'email', 'phone_number']
-    # Update any other admin configurations that reference 'user'
 
 @admin.register(Tenant)
 class TenantAdmin(ImportExportModelAdmin):
@@ -64,9 +62,10 @@ class HouseBookingAdmin(ImportExportModelAdmin):
 
 @admin.register(Invoice)
 class InvoiceAdmin(ImportExportModelAdmin):
-    list_filter = ('month', 'year', 'paid', 'date_added')
+    # Changed 'paid' to 'payment_status' in both list_filter and list_display
+    list_filter = ('month', 'year', 'payment_status', 'date_added')
     search_fields = ('tenant__user__username', 'house__number')
-    list_display = ('tenant', 'house', 'month', 'year', 'rent', 'total_payable', 'paid', 'date_added')
+    list_display = ('tenant', 'house', 'month', 'year', 'rent', 'total_payable', 'payment_status', 'date_added')
 
 @admin.register(LogEntry)
 class LogEntryAdmin(admin.ModelAdmin):

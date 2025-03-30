@@ -1,29 +1,17 @@
-from django.urls import path, include
+# File: accounts/api/urls.py
 from rest_framework.routers import DefaultRouter
-from .views import (
-    UserViewSet, ProfileViewSet, LandlordViewSet, TenantViewSet,
-    ApartmentTypeViewSet, HouseTypeViewSet, ApartmentViewSet,
-    HouseViewSet, HouseBookingViewSet, InvoiceViewSet
-)
+from django.urls import path
+from ..api.views import UserViewSet,ProfileViewSet,TenantViewSet,RoleViewSet,LandlordViewSet
 
-# Create a router and register our viewsets
-router = DefaultRouter()
-router.register(r'users', UserViewSet)
-router.register(r'profiles', ProfileViewSet)
-router.register(r'landlords', LandlordViewSet)
-router.register(r'tenants', TenantViewSet)
-router.register(r'apartment-types', ApartmentTypeViewSet)
-router.register(r'house-types', HouseTypeViewSet)
-router.register(r'apartments', ApartmentViewSet)
-router.register(r'houses', HouseViewSet)
-router.register(r'bookings', HouseBookingViewSet)
-router.register(r'invoices', InvoiceViewSet)
+# Create accounts app-specific router
+accounts_router = DefaultRouter()
 
-# The API URLs are determined automatically by the router
-urlpatterns = [
-    # Include the router URLs
-    path('', include(router.urls)),
-    
-    # Include login URLs for browsable API
-    path('api-auth/', include('rest_framework.urls')),
-]
+# Register accounts viewsets
+accounts_router.register(r'users', UserViewSet)
+accounts_router.register(r'profiles', ProfileViewSet)
+accounts_router.register(r'tenants', TenantViewSet)
+accounts_router.register(r'roles', RoleViewSet)  # Add this line
+accounts_router.register(r'landlords', LandlordViewSet)  #
+
+# No authentication endpoints here - we'll centralize in the main urls.py
+urlpatterns = accounts_router.urls

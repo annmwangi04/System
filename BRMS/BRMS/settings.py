@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
 from pathlib import Path
+from corsheaders.defaults import default_headers
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -38,6 +39,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework_simplejwt',
+    'rest_framework.authtoken',
     'rest_framework',
     'corsheaders',
     'import_export',
@@ -47,11 +49,12 @@ INSTALLED_APPS = [
 
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
         'rest_framework.authentication.SessionAuthentication',
         'rest_framework.authentication.BasicAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  # For registration endpoint
+        'rest_framework.permissions.IsAuthenticated',
     ]
 }
 
@@ -64,14 +67,16 @@ SIMPLE_JWT = {
     'BLACKLIST_AFTER_ROTATION': False,  # Consider enabling if using token rotation
     'UPDATE_LAST_LOGIN': False,  # You could set to True to track user last login
     'ALGORITHM': 'HS256',  # Recommended default
-    'SIGNING_KEY': '{{ your_secret_key }}',  # Ensure this is a strong, unique secret key
+    'SIGNING_KEY': SECRET_KEY,  # Ensure this is a strong, unique secret key
     'AUTH_HEADER_TYPES': ('Bearer',),  # Standard JWT authentication header
 }
 # CORS settings
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",
+   "http://localhost:5173",  # Add your Vite dev server
+    "http://127.0.0.1:5173",
 ]
-CORS_ALLOW_CREDENTIALS = True
+# Add temporarily for debugging
+CORS_ALLOW_ALL_ORIGINS = True
 # Optional: Specify which HTTP methods are allowed
 CORS_ALLOW_METHODS = [
     "DELETE",
@@ -96,14 +101,19 @@ CORS_ALLOW_HEADERS = [
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.security.SecurityMiddleware',  # Move this up
+    'corsheaders.middleware.CorsMiddleware',  # Keep this near the top
     'django.middleware.common.CommonMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
 ]
 
 ROOT_URLCONF = 'BRMS.urls'
@@ -178,3 +188,4 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+LOGIN_REDIRECT_URL = '/dashboard/'

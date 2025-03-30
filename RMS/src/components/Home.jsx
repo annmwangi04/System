@@ -1,6 +1,5 @@
 import React, { useState } from "react";
-
-
+import { useNavigate } from "react-router-dom";
 import {
   AppBar,
   Toolbar,
@@ -30,12 +29,13 @@ import {
   Twitter as TwitterIcon,
   AccountCircle as UserIcon,
   Menu as MenuIcon,
-  Close as CloseIcon,
 } from "@mui/icons-material";
 
-import LoginForm from "./auth/LoginForm";
-import RegisterForm from "./auth/RegisterForm";
+// Import your components and images
+import LoginForm from "./auth/LoginPage";
+import RegisterForm from "./auth/RegisterPage";
 
+// Replace these with your actual image imports
 import welcomeImage from "../assets/welcome-background.jpg";
 import aboutUsImage from "../assets/about-us-image.jpg";
 
@@ -109,9 +109,10 @@ const Theme = createTheme({
   },
 });
 
-const Home = () => {
+const HomePage = () => {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down("sm"));
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     name: "",
@@ -122,6 +123,7 @@ const Home = () => {
   // State for managing dialog and tabs
   const [dashboardOpen, setDashboardOpen] = useState(false);
   const [tabValue, setTabValue] = useState(0);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   // Contact form input handler
   const handleContactInputChange = (e) => {
@@ -134,6 +136,14 @@ const Home = () => {
     e.preventDefault();
     // Implement contact form submission logic
     console.log("Contact Form Submitted", formData);
+    // Reset form
+    setFormData({
+      name: "",
+      email: "",
+      message: "",
+    });
+    // Show success message or feedback
+    alert("Thank you for your message! We'll get back to you soon.");
   };
 
   // Handler to open dashboard dialog
@@ -153,7 +163,19 @@ const Home = () => {
 
   // Mobile menu toggle handler
   const toggleMobileMenu = () => {
-    // Implement mobile menu toggle logic
+    setMobileMenuOpen(!mobileMenuOpen);
+  };
+
+  // Handle successful login or registration
+  const handleAuthSuccess = (role) => {
+    setDashboardOpen(false);
+    
+    // Navigate based on user role
+    if (role === 'landlord') {
+      navigate('/landlord-dashboard');
+    } else {
+      navigate('/dashboard');
+    }
   };
 
   return (
@@ -187,6 +209,33 @@ const Home = () => {
             </IconButton>
           ) : (
             <Box sx={{ display: "flex", alignItems: "center" }}>
+              <Button 
+                color="inherit" 
+                sx={{ mx: 1 }}
+                onClick={() => navigate('/')}
+              >
+                Home
+              </Button>
+              <Button 
+                color="inherit" 
+                sx={{ mx: 1 }}
+                onClick={() => {
+                  const element = document.getElementById('about-section');
+                  element?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                About
+              </Button>
+              <Button 
+                color="inherit" 
+                sx={{ mx: 1 }}
+                onClick={() => {
+                  const element = document.getElementById('contact-section');
+                  element?.scrollIntoView({ behavior: 'smooth' });
+                }}
+              >
+                Contact
+              </Button>
               <IconButton color="inherit" onClick={handleDashboardOpen}>
                 <UserIcon />
               </IconButton>
@@ -194,6 +243,8 @@ const Home = () => {
           )}
         </Toolbar>
       </AppBar>
+
+      {/* Mobile menu drawer could be added here */}
 
       <main
         style={{
@@ -239,10 +290,6 @@ const Home = () => {
               where property ownership becomes effortless. Our user-friendly
               dashboard puts everything you need at your fingertips – from
               automated rent collection to real-time financial reporting.
-              Experience the peace of mind that comes with complete visibility
-              into your rental business while saving hours of administrative
-              work each month. Log in now and transform your property management
-              experience with just a few clicks.
             </Typography>
             <Box sx={{ mt: 4 }}>
               <Button
@@ -250,6 +297,13 @@ const Home = () => {
                 color="primary"
                 size="large"
                 onClick={handleDashboardOpen}
+                sx={{
+                  backgroundColor: "white",
+                  color: theme.palette.primary.main,
+                  "&:hover": {
+                    backgroundColor: "#f0f0f0",
+                  }
+                }}
               >
                 Get Started
               </Button>
@@ -258,57 +312,59 @@ const Home = () => {
         </section>
 
         {/* About Us Section */}
-        <Container sx={{ py: 8 }}>
-          <Grid container spacing={4} alignItems="center">
-            <Grid item xs={12} md={6}>
-              <Box
-                sx={{
-                  height: { xs: 300, sm: 500 },
-                  backgroundImage: `url(${aboutUsImage})`,
-                  backgroundSize: "cover",
-                  backgroundPosition: "center",
-                  borderRadius: 2,
-                  boxShadow: 3,
-                }}
-              />
+        <section id="about-section">
+          <Container sx={{ py: 8 }}>
+            <Grid container spacing={4} alignItems="center">
+              <Grid item xs={12} md={6}>
+                <Box
+                  sx={{
+                    height: { xs: 300, sm: 500 },
+                    backgroundImage: `url(${aboutUsImage})`,
+                    backgroundSize: "cover",
+                    backgroundPosition: "center",
+                    borderRadius: 2,
+                    boxShadow: 3,
+                  }}
+                />
+              </Grid>
+              <Grid item xs={12} md={6}>
+                <Typography
+                  variant="h4"
+                  gutterBottom
+                  color="primary"
+                  sx={{
+                    fontWeight: 600,
+                    "@media (max-width:600px)": {
+                      fontSize: "1.5rem",
+                    },
+                  }}
+                >
+                  About RMS.
+                </Typography>
+                <Typography variant="body1" paragraph>
+                  RentEase is a comprehensive property management platform
+                  designed to bridge the gap between landlords and tenants. Our
+                  innovative solution streamlines rental processes, making
+                  property management effortless and transparent.
+                </Typography>
+                <Typography variant="body1" paragraph>
+                  We provide tools for seamless communication, rent tracking,
+                  maintenance requests, and financial management. Whether you're a
+                  property owner or a tenant, RentEase simplifies your rental
+                  experience.
+                </Typography>
+                <Box sx={{ mt: 3 }}>
+                  <Button variant="outlined" color="primary">
+                    Learn More
+                  </Button>
+                </Box>
+              </Grid>
             </Grid>
-            <Grid item xs={12} md={6}>
-              <Typography
-                variant="h4"
-                gutterBottom
-                color="primary"
-                sx={{
-                  fontWeight: 600,
-                  "@media (max-width:600px)": {
-                    fontSize: "1.5rem",
-                  },
-                }}
-              >
-                About RMS.
-              </Typography>
-              <Typography variant="body1" paragraph>
-                RentEase is a comprehensive property management platform
-                designed to bridge the gap between landlords and tenants. Our
-                innovative solution streamlines rental processes, making
-                property management effortless and transparent.
-              </Typography>
-              <Typography variant="body1" paragraph>
-                We provide tools for seamless communication, rent tracking,
-                maintenance requests, and financial management. Whether you're a
-                property owner or a tenant, RentEase simplifies your rental
-                experience.
-              </Typography>
-              <Box sx={{ mt: 3 }}>
-                <Button variant="outlined" color="primary">
-                  Learn More
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        </Container>
+          </Container>
+        </section>
 
         {/* Contact Section */}
-        <section style={{ backgroundColor: "#f5f5f5", padding: "4rem 0" }}>
+        <section id="contact-section" style={{ backgroundColor: "#f5f5f5", padding: "4rem 0" }}>
           <Container>
             <Grid container spacing={4}>
               {/* Contact Form */}
@@ -402,6 +458,7 @@ const Home = () => {
                   allowFullScreen=""
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
+                  title="Google Maps Location"
                 ></iframe>
 
                 {/* Social Media Icons */}
@@ -413,16 +470,16 @@ const Home = () => {
                     mt: 3,
                   }}
                 >
-                  <IconButton color="primary" href="#" size="large">
+                  <IconButton color="primary" href="#" size="large" aria-label="Facebook">
                     <FacebookIcon fontSize="large" />
                   </IconButton>
-                  <IconButton color="secondary" href="#" size="large">
+                  <IconButton color="secondary" href="#" size="large" aria-label="Instagram">
                     <InstagramIcon fontSize="large" />
                   </IconButton>
-                  <IconButton color="primary" href="#" size="large">
+                  <IconButton color="primary" href="#" size="large" aria-label="LinkedIn">
                     <LinkedInIcon fontSize="large" />
                   </IconButton>
-                  <IconButton color="info" href="#" size="large">
+                  <IconButton color="info" href="#" size="large" aria-label="Twitter">
                     <TwitterIcon fontSize="large" />
                   </IconButton>
                 </Box>
@@ -431,6 +488,8 @@ const Home = () => {
           </Container>
         </section>
       </main>
+
+      {/* Footer could be added here */}
 
       {/* Dashboard/Login Dialog */}
       <Dialog
@@ -453,10 +512,10 @@ const Home = () => {
         </DialogTitle>
         <DialogContent>
           {tabValue === 0 && (
-            <LoginForm />
+            <LoginForm onLoginSuccess={handleAuthSuccess} />
           )}
           {tabValue === 1 && (
-            <RegisterForm />
+            <RegisterForm onRegisterSuccess={handleAuthSuccess} />
           )}
         </DialogContent>
         <DialogActions>
@@ -469,4 +528,4 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default HomePage;

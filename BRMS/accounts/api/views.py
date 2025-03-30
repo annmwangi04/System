@@ -25,29 +25,109 @@ from ..models import (
 
 class FlexiblePermission(BasePermission):
     """
-    Custom permission class with more flexible access controls
+    Custom permission class with role-based access controls
     """
     def has_permission(self, request, view):
-        # Allow any method for staff users
+        # Allow any method for staff users (admins)
         if request.user and request.user.is_staff:
             return True
         
-        # Allow create method for anyone
-        if view.action == 'create':
+        # Allow these actions without authentication
+        if view.action in ['create', 'assign_role']:
             return True
         
-        return request.method in SAFE_METHODS
+        # Allow authenticated users to access safe methods
+        if request.user and request.user.is_authenticated:
+            return True if request.method in SAFE_METHODS else self.check_role_permission(request, view)
+        
+        return False
+    
+    def check_role_permission(self, request, view):
+        """Check permissions based on user role"""
+        try:
+            # Check if user is landlord
+            if hasattr(request.user, 'landlord'):
+                # Landlords can only modify their own properties
+                if view.__class__.__name__ in ['ApartmentViewSet', 'HouseViewSet']:
+                    return True
+                # Landlords can generate invoices for their properties
+                if view.__class__.__name__ == 'InvoiceViewSet':
+                    return True
+                return False
+            
+            # Check if user is tenant
+            if hasattr(request.user, 'tenant'):
+                # Tenants can only book houses and manage their own bookings
+                if view.__class__.__name__ == 'HouseBookingViewSet':
+                    return True
+                return False
+                
+            return False
+        except:
+            return False
 
     def has_object_permission(self, request, view, obj):
         # Staff always has full access
         if request.user and request.user.is_staff:
             return True
         
-        # Allow users to access their own objects
-        if hasattr(obj, 'user') and obj.user == request.user:
+        # Allow these actions without authentication
+        if view.action in ['assign_role']:
             return True
         
-        return request.method in SAFE_METHODS
+        # Allow safe methods for authenticated users
+        if request.method in SAFE_METHODS and request.user and request.user.is_authenticated:
+            return True
+        
+        # For write operations, check role-specific permissions
+        try:
+            # Landlord permissions
+            if hasattr(request.user, 'landlord'):
+                landlord = request.user.landlord
+                
+                # Allow landlords to manage their own profile
+                if isinstance(obj, Landlord) and obj.user == request.user:
+                    return True
+                
+                # Allow landlords to manage their own apartments
+                if isinstance(obj, Apartment) and obj.owner == landlord:
+                    return True
+                
+                # Allow landlords to manage houses in their apartments
+                if isinstance(obj, House) and obj.apartment.owner == landlord:
+                    return True
+                
+                # Allow landlords to manage invoices for their houses
+                if isinstance(obj, Invoice) and obj.house.apartment.owner == landlord:
+                    return True
+                
+                return False
+            
+            # Tenant permissions
+            if hasattr(request.user, 'tenant'):
+                tenant = request.user.tenant
+                
+                # Allow tenants to manage their own profile
+                if isinstance(obj, Tenant) and obj.user == request.user:
+                    return True
+                
+                # Allow tenants to manage their own bookings
+                if isinstance(obj, HouseBooking) and obj.tenant == tenant:
+                    return True
+                
+                # Allow tenants to view their own invoices (but not edit)
+                if isinstance(obj, Invoice) and obj.tenant == tenant and request.method in SAFE_METHODS:
+                    return True
+                
+                return False
+            
+            # User managing their own user object
+            if isinstance(obj, User) and obj == request.user:
+                return True
+            
+            return False
+        except:
+            return False
 
 class UserViewSet(ModelViewSet):
     queryset = User.objects.all()
@@ -62,6 +142,18 @@ class UserViewSet(ModelViewSet):
     search_fields = ['username', 'email', 'first_name', 'last_name']
     ordering_fields = ['username', 'date_joined']
 
+    def get_queryset(self):
+        """
+        Filter users based on role:
+        - Admins can see all users
+        - Regular users can only see themselves
+        """
+        if self.request.user.is_staff:
+            return User.objects.all()
+        elif self.request.user.is_authenticated:
+            return User.objects.filter(id=self.request.user.id)
+        return User.objects.none()
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Secure user creation with comprehensive validation"""
@@ -73,6 +165,13 @@ class UserViewSet(ModelViewSet):
             first_name = request.data.get('first_name', '')
             last_name = request.data.get('last_name', '')
             is_staff = request.data.get('is_staff', False)
+
+            # Only staff can create staff users
+            if is_staff and not request.user.is_staff:
+                return Response(
+                    {'error': 'Only administrators can create staff accounts'}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
             # Comprehensive validation
             if not username:
@@ -124,53 +223,29 @@ class UserViewSet(ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
-    def get_current_user(self, request):
-        """Get details of the currently logged-in user"""
-        serializer = self.get_serializer(request.user)
-        return Response(serializer.data)
-
-    @action(detail=True, methods=['POST'], permission_classes=[IsAuthenticated])
-    def set_password(self, request, pk=None):
-        """Allow users to change their password"""
-        user = self.get_object()
-        
-        # Ensure user is changing their own password or is an admin
-        if user != request.user and not request.user.is_staff:
-            return Response(
-                {'error': 'Unauthorized password change'}, 
-                status=status.HTTP_403_FORBIDDEN
-            )
-
-        new_password = request.data.get('new_password')
-        if not new_password:
-            return Response(
-                {'error': 'New password is required'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        user.set_password(new_password)
-        user.save()
-        return Response(
-            {'message': 'Password updated successfully'}, 
-            status=status.HTTP_200_OK
-        )
-
-    @action(detail=True, methods=['POST'], permission_classes=[IsAuthenticated])
+    @action(detail=True, methods=['POST'])
     def assign_role(self, request, pk=None):
         """
-        Assign a role (landlord or tenant) to a user
+        Assign a role (landlord or tenant) to a user.
         """
-        user = self.get_object()
-        role = request.data.get('role')
-        
-        if role not in ['landlord', 'tenant']:
-            return Response(
-                {"error": "Invalid role. Must be 'landlord' or 'tenant'"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
         try:
+            # Get the user object or return 404
+            user = get_object_or_404(User, pk=pk)
+            role = request.data.get('role')
+            
+            # Allow role self-assignment during registration process
+            # This allows a new user to become a landlord or tenant
+            # Log debug information
+            print(f"Attempting to assign role {role} to user {user.id}")
+            
+            # Validate role
+            if role not in ['landlord', 'tenant']:
+                return Response(
+                    {"error": "Invalid role. Must be 'landlord' or 'tenant'"}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Create role-specific profile
             if role == 'landlord':
                 # Check if landlord profile already exists
                 if not Landlord.objects.filter(user=user).exists():
@@ -187,7 +262,7 @@ class UserViewSet(ModelViewSet):
                 return Response({
                     "message": "Landlord role assigned successfully",
                     "role": "landlord"
-                })
+                }, status=status.HTTP_200_OK)
             else:  # tenant
                 # Check if tenant profile already exists
                 if not Tenant.objects.filter(user=user).exists():
@@ -203,27 +278,16 @@ class UserViewSet(ModelViewSet):
                 return Response({
                     "message": "Tenant role assigned successfully",
                     "role": "tenant"
-                })
+                }, status=status.HTTP_200_OK)
         
         except Exception as e:
+            print(f"Role assignment error: {str(e)}")
             return Response(
                 {"error": str(e)}, 
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-    @action(detail=False, methods=['GET'], permission_classes=[IsAuthenticated])
-    def get_user_roles(self, request):
-        """
-        Get roles for the current user
-        """
-        user = request.user
-        roles = {
-            'is_landlord': Landlord.objects.filter(user=user).exists(),
-            'is_tenant': Tenant.objects.filter(user=user).exists(),
-            'is_admin': user.is_staff
-        }
-        return Response(roles)
-
+   
 class ProfileViewSet(ModelViewSet):
     queryset = Profile.objects.all()
     serializer_class = ProfileSerializer
@@ -238,12 +302,23 @@ class ProfileViewSet(ModelViewSet):
     ordering_fields = ['user__username', 'location']
 
     def get_queryset(self):
-        """Flexible querying with optional username filter"""
+        """Role-based filtering of profiles"""
         queryset = Profile.objects.all()
         username = self.request.query_params.get('username')
+        
+        # Apply username filter if provided
         if username:
             queryset = queryset.filter(user__username=username)
-        return queryset
+        
+        # Staff can see all profiles
+        if self.request.user.is_staff:
+            return queryset
+        
+        # Regular users can only see their own profile
+        if self.request.user.is_authenticated:
+            return queryset.filter(user=self.request.user)
+        
+        return Profile.objects.none()
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -257,6 +332,13 @@ class ProfileViewSet(ModelViewSet):
 
         try:
             user = get_object_or_404(User, id=user_id)
+            
+            # Only staff or the user themselves can create their profile
+            if not request.user.is_staff and request.user.id != user.id:
+                return Response(
+                    {"error": "You don't have permission to create a profile for this user"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
 
             # Check if profile already exists
             if hasattr(user, 'profile'):
@@ -299,6 +381,24 @@ class LandlordViewSet(ModelViewSet):
     search_fields = ['user__username', 'user__email']
     ordering_fields = ['date_added']
 
+    def get_queryset(self):
+        """Role-based filtering of landlords"""
+        queryset = Landlord.objects.all()
+        
+        # Staff can see all landlords
+        if self.request.user.is_staff:
+            return queryset
+            
+        # Regular users can only see their own landlord profile
+        if self.request.user.is_authenticated and hasattr(self.request.user, 'landlord'):
+            return queryset.filter(user=self.request.user)
+            
+        # Tenants can see all landlords (to browse properties)
+        if self.request.user.is_authenticated:
+            return queryset
+            
+        return Landlord.objects.none()
+
     @transaction.atomic
     def create(self, request, *args, **kwargs):
         """Create a landlord profile linked to an existing user"""
@@ -311,6 +411,13 @@ class LandlordViewSet(ModelViewSet):
         
         try:
             user = get_object_or_404(User, id=user_id)
+            
+            # Only staff or the user themselves can create their landlord profile
+            if not request.user.is_staff and request.user.id != user.id:
+                return Response(
+                    {"error": "You don't have permission to create a landlord profile for this user"}, 
+                    status=status.HTTP_403_FORBIDDEN
+                )
             
             # Check if landlord profile already exists
             if Landlord.objects.filter(user_id=user_id).exists():
@@ -356,6 +463,34 @@ class TenantViewSet(ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['user__username', 'user__first_name', 'user__last_name', 'id_number_or_passport']
     ordering_fields = ['date_added']
+
+    def get_queryset(self):
+        """Role-based filtering of tenants"""
+        queryset = Tenant.objects.all()
+        
+        # Staff can see all tenants
+        if self.request.user.is_staff:
+            return queryset
+            
+        # Landlords can see tenants in their properties
+        if hasattr(self.request.user, 'landlord'):
+            # Get houses owned by this landlord
+            landlord_house_ids = House.objects.filter(
+                apartment__owner=self.request.user.landlord
+            ).values_list('id', flat=True)
+            
+            # Get tenants in these houses
+            tenant_ids = House.objects.filter(
+                id__in=landlord_house_ids
+            ).exclude(tenant=None).values_list('tenant_id', flat=True)
+            
+            return queryset.filter(id__in=tenant_ids)
+            
+        # Tenants can only see their own profile
+        if self.request.user.is_authenticated and hasattr(self.request.user, 'tenant'):
+            return queryset.filter(user=self.request.user)
+            
+        return Tenant.objects.none()
 
     @transaction.atomic
     def create(self, request, *args, **kwargs):
@@ -423,6 +558,19 @@ class ApartmentTypeViewSet(ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name', 'date_added']
+    
+    def get_queryset(self):
+        # Everyone can see apartment types
+        return ApartmentType.objects.all()
+    
+    def create(self, request, *args, **kwargs):
+        # Only staff can create apartment types
+        if not request.user.is_staff:
+            return Response(
+                {"error": "Only administrators can create apartment types"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().create(request, *args, **kwargs)
 
 class HouseTypeViewSet(ModelViewSet):
     queryset = HouseType.objects.all()
@@ -436,6 +584,19 @@ class HouseTypeViewSet(ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['name']
     ordering_fields = ['name', 'date_added']
+    
+    def get_queryset(self):
+        # Everyone can see house types
+        return HouseType.objects.all()
+    
+    def create(self, request, *args, **kwargs):
+        # Only staff can create house types
+        if not request.user.is_staff:
+            return Response(
+                {"error": "Only administrators can create house types"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+        return super().create(request, *args, **kwargs)
 
 class ApartmentViewSet(ModelViewSet):
     queryset = Apartment.objects.all()
@@ -452,22 +613,39 @@ class ApartmentViewSet(ModelViewSet):
 
     def get_queryset(self):
         """
-        Optionally filter apartments by owner or apartment type
+        Role-based filtering of apartments
         """
         queryset = Apartment.objects.all()
         owner_id = self.request.query_params.get('owner_id', None)
         apartment_type_id = self.request.query_params.get('apartment_type_id', None)
         
+        # Apply filters if provided
         if owner_id is not None:
             queryset = queryset.filter(owner_id=owner_id)
         if apartment_type_id is not None:
             queryset = queryset.filter(apartment_type_id=apartment_type_id)
         
+        # Staff can see all apartments
+        if self.request.user.is_staff:
+            return queryset
+            
+        # Landlords can only see their own apartments
+        if hasattr(self.request.user, 'landlord'):
+            return queryset.filter(owner=self.request.user.landlord)
+            
+        # Tenants and others can see all apartments (for browsing)
         return queryset
     
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Custom create method to handle nested objects"""
+        """Custom create method to handle nested objects with role checking"""
+        # Only staff and landlords can create apartments
+        if not request.user.is_staff and not hasattr(request.user, 'landlord'):
+            return Response(
+                {"error": "You don't have permission to create apartments"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
         owner_id = request.data.get('owner_id')
         apartment_type_id = request.data.get('apartment_type_id')
         
@@ -479,8 +657,16 @@ class ApartmentViewSet(ModelViewSet):
         
         try:
             # Verify owner and apartment type exist
-            get_object_or_404(Landlord, id=owner_id)
+            landlord = get_object_or_404(Landlord, id=owner_id)
             get_object_or_404(ApartmentType, id=apartment_type_id)
+            
+            # If user is landlord (not staff), verify they are creating their own apartment
+            if not request.user.is_staff and hasattr(request.user, 'landlord'):
+                if landlord.id != request.user.landlord.id:
+                    return Response(
+                        {"error": "You can only create apartments for yourself"}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
             
             # Create modified data with objects instead of IDs
             modified_data = request.data.copy()
@@ -523,7 +709,7 @@ class HouseViewSet(ModelViewSet):
 
     def get_queryset(self):
         """
-        Optionally filter houses by apartment, house type, or tenant
+        Role-based filtering of houses
         """
         queryset = House.objects.all()
         apartment_id = self.request.query_params.get('apartment_id', None)
@@ -531,6 +717,7 @@ class HouseViewSet(ModelViewSet):
         tenant_id = self.request.query_params.get('tenant_id', None)
         status = self.request.query_params.get('status', None)
         
+        # Apply filters if provided
         if apartment_id is not None:
             queryset = queryset.filter(apartment_id=apartment_id)
         if house_type_id is not None:
@@ -540,11 +727,37 @@ class HouseViewSet(ModelViewSet):
         if status is not None:
             queryset = queryset.filter(status=status)
         
-        return queryset
+        # Staff can see all houses
+        if self.request.user.is_staff:
+            return queryset
+            
+        # Landlords can only see houses in their apartments
+        if hasattr(self.request.user, 'landlord'):
+            return queryset.filter(apartment__owner=self.request.user.landlord)
+            
+        # Tenants can see their own houses and available houses
+        if hasattr(self.request.user, 'tenant'):
+            return queryset.filter(
+                # Either houses assigned to this tenant
+                tenant=self.request.user.tenant
+            ) | queryset.filter(
+                # Or available houses
+                status='vacant'
+            )
+            
+        # Others can see available houses
+        return queryset.filter(status='vacant')
     
     @transaction.atomic
     def create(self, request, *args, **kwargs):
-        """Custom create method to handle nested objects"""
+        """Custom create method to handle nested objects with role checking"""
+        # Only staff and landlords can create houses
+        if not request.user.is_staff and not hasattr(request.user, 'landlord'):
+            return Response(
+                {"error": "You don't have permission to create houses"}, 
+                status=status.HTTP_403_FORBIDDEN
+            )
+            
         apartment_id = request.data.get('apartment_id')
         house_type_id = request.data.get('house_type_id')
         tenant_id = request.data.get('tenant_id', None)
@@ -557,8 +770,16 @@ class HouseViewSet(ModelViewSet):
         
         try:
             # Verify apartment and house type exist
-            get_object_or_404(Apartment, id=apartment_id)
+            apartment = get_object_or_404(Apartment, id=apartment_id)
             get_object_or_404(HouseType, id=house_type_id)
+            
+            # If user is landlord (not staff), verify they own this apartment
+            if not request.user.is_staff and hasattr(request.user, 'landlord'):
+                if apartment.owner != request.user.landlord:
+                    return Response(
+                        {"error": "You can only create houses in your own apartments"}, 
+                        status=status.HTTP_403_FORBIDDEN
+                    )
             
             # Create modified data with objects instead of IDs
             modified_data = request.data.copy()
@@ -609,96 +830,43 @@ class HouseBookingViewSet(ModelViewSet):
 
     def get_queryset(self):
         """
-        Optionally filter bookings by tenant or house
+        Role-based filtering of bookings
         """
         queryset = HouseBooking.objects.all()
         tenant_id = self.request.query_params.get('tenant_id', None)
         house_id = self.request.query_params.get('house_id', None)
         
+        # Apply filters if provided
         if tenant_id is not None:
             queryset = queryset.filter(tenant_id=tenant_id)
         if house_id is not None:
             queryset = queryset.filter(house_id=house_id)
         
-        return queryset
-    
-    @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        """Custom create method to handle nested objects"""
-        tenant_id = request.data.get('tenant_id')
-        house_id = request.data.get('house_id')
+        # Staff can see all bookings
+        if self.request.user.is_staff:
+            return queryset
         
-        if not tenant_id or not house_id:
-            return Response(
-                {"error": "Both tenant_id and house_id are required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        try:
-            # Get tenant and house, verify they exist
-            tenant = get_object_or_404(Tenant, id=tenant_id)
-            house = get_object_or_404(House, id=house_id)
-            
-            # Check if house is available
-            if house.status != 'vacant':
-                return Response(
-                    {"error": "This house is not available for booking"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-        
-            # Create modified data with objects instead of IDs
-            modified_data = request.data.copy()
-            modified_data.pop('tenant_id', None)
-            modified_data.pop('house_id', None)
-            
-            # Validate deposit and rent amounts
-            modified_data['deposit_amount'] = modified_data.get('deposit_amount', house.deposit_amount or 0)
-            modified_data['rent_amount_paid'] = modified_data.get('rent_amount_paid', house.monthly_rent)
-            
-            # Create the booking
-            serializer = self.get_serializer(data=modified_data)
-            serializer.is_valid(raise_exception=True)
-            
-            booking = HouseBooking.objects.create(
-                **serializer.validated_data,
-                tenant=tenant,
-                house=house
-            )
-            
-            # Update house status
-            house.status = 'occupied'
-            house.tenant = tenant
-            house.save()
-            
-            return Response(
-                HouseBookingSerializer(booking).data, 
-                status=status.HTTP_201_CREATED
-            )
-        
-        except Exception as e:
-            return Response(
-                {'error': str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
 
 class InvoiceViewSet(ModelViewSet):
     queryset = Invoice.objects.all()
     serializer_class = InvoiceSerializer
     authentication_classes = [
-        SessionAuthentication, 
-        TokenAuthentication, 
+        SessionAuthentication,
+        TokenAuthentication,
         BasicAuthentication
     ]
     permission_classes = [FlexiblePermission]
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ['tenant__user__username', 'house__number', 'month', 'year']
     ordering_fields = ['date_added', 'month', 'year', 'paid']
-
+    
     def get_queryset(self):
         """
-        Optionally filter invoices by tenant, house, month, year, or payment status
+        Filter invoices based on user role
         """
-        queryset = Invoice.objects.all()
+        queryset = super().get_queryset()
+        
+        # Apply any existing filters
         tenant_id = self.request.query_params.get('tenant_id', None)
         house_id = self.request.query_params.get('house_id', None)
         month = self.request.query_params.get('month', None)
@@ -716,62 +884,17 @@ class InvoiceViewSet(ModelViewSet):
         if paid is not None:
             queryset = queryset.filter(paid=(paid.lower() == 'true'))
         
-        return queryset
-    
-    @transaction.atomic
-    def create(self, request, *args, **kwargs):
-        """Custom create method to handle nested objects"""
-        tenant_id = request.data.get('tenant_id')
-        house_id = request.data.get('house_id')
+        # If user is staff, return all
+        if self.request.user.is_staff:
+            return queryset
         
-        if not tenant_id or not house_id:
-            return Response(
-                {"error": "Both tenant_id and house_id are required"}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # If user is landlord, return only invoices for their houses
+        if hasattr(self.request.user, 'landlord'):
+            return queryset.filter(house__apartment__owner=self.request.user.landlord)
         
-        try:
-            # Get tenant and house, verify they exist
-            tenant = get_object_or_404(Tenant, id=tenant_id)
-            house = get_object_or_404(House, id=house_id)
-            
-            # Verify tenant is assigned to this house
-            if house.tenant != tenant:
-                return Response(
-                    {"error": "This tenant is not assigned to this house"}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            
-            # Create modified data with objects instead of IDs
-            modified_data = request.data.copy()
-            modified_data.pop('tenant_id', None)
-            modified_data.pop('house_id', None)
-            
-            # Set rent amount if not provided
-            if 'rent' not in modified_data:
-                modified_data['rent'] = house.monthly_rent
-            
-            # Set total_payable to rent if not provided
-            if 'total_payable' not in modified_data:
-                modified_data['total_payable'] = modified_data.get('rent', house.monthly_rent)
-            
-            # Create the invoice
-            serializer = self.get_serializer(data=modified_data)
-            serializer.is_valid(raise_exception=True)
-            
-            invoice = Invoice.objects.create(
-                **serializer.validated_data,
-                tenant=tenant,
-                house=house
-            )
-            
-            return Response(
-                InvoiceSerializer(invoice).data, 
-                status=status.HTTP_201_CREATED
-            )
+        # If user is tenant, return only their invoices
+        if hasattr(self.request.user, 'tenant'):
+            return queryset.filter(tenant=self.request.user.tenant)
         
-        except Exception as e:
-            return Response(
-                {'error': str(e)}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
+        # Return empty queryset if user doesn't match any role
+        return Invoice.objects.none()

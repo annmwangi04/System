@@ -35,6 +35,17 @@ const RegisterForm = () => {
     message: '',
     severity: 'error'
   });
+  const [loading, setLoading] = useState(false);
+
+  // Create axios instance with correct configuration
+  const customApi = axios.create({
+    baseURL: 'http://localhost:8000/api/',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    withCredentials: true  // Important for session authentication
+  });
 
   // Handle input changes
   const handleChange = (e) => {
@@ -43,6 +54,11 @@ const RegisterForm = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value
     }));
+    
+    // Clear error for this field when user starts typing
+    if (errors[name]) {
+      setErrors(prev => ({ ...prev, [name]: '' }));
+    }
   };
 
   // Form validation function
@@ -73,19 +89,20 @@ const RegisterForm = () => {
     e.preventDefault();
 
     if (!validateForm()) return;
+    
+    setLoading(true);
 
     try {
-      // Create axios instance with correct configuration
-      const customApi = axios.create({
-        baseURL: 'http://localhost:8000/api/',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest'
-        },
-        withCredentials: true
+      // User registration
+      console.log('Sending registration data:', {
+        username: formData.username,
+        email: formData.email,
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        is_staff: formData.is_admin,
+        password: formData.password
       });
 
-      // Use customApi to post user registration
       const userResponse = await customApi.post('users/', {
         username: formData.username,
         email: formData.email,
@@ -96,35 +113,64 @@ const RegisterForm = () => {
       });
 
       const userId = userResponse.data.id;
+      console.log('User created successfully with ID:', userId);
 
       // Assign role if not admin
       if (!formData.is_admin) {
-        await customApi.post(`users/${userId}/assign_role/`, {
-          role: formData.account_type
-        });
+        console.log(`Assigning role ${formData.account_type} to user ${userId}`);
+        
+        try {
+          const roleResponse = await customApi.post(`users/${userId}/assign_role/`, {
+            role: formData.account_type
+          });
+          console.log('Role assignment response:', roleResponse.data);
+        } catch (roleError) {
+          console.error('Role assignment error:', {
+            status: roleError.response?.status,
+            data: roleError.response?.data,
+            message: roleError.message
+          });
+          throw new Error(`Role assignment failed: ${roleError.response?.data?.error || roleError.message}`);
+        }
       }
 
-      // Reset form or redirect after successful registration
+      // Show success message
       setSnackbar({
         open: true,
-        message: 'Registration successful',
+        message: `Registration successful as ${formData.is_admin ? 'Administrator' : formData.account_type}`,
         severity: 'success'
       });
 
+      // Reset form after successful registration
+      setFormData({
+        username: '',
+        email: '',
+        password: '',
+        confirmPassword: '',
+        first_name: '',
+        last_name: '',
+        is_admin: false,
+        account_type: ''
+      });
+
     } catch (err) {
-      console.error('Registration error', err);
+      // Enhanced error logging
+      console.error('Registration error:', err);
       
       const errorMessage = 
         err.response?.data?.error || 
         err.response?.data?.username?.[0] || 
         err.response?.data?.email?.[0] || 
-        'Registration failed';
+        err.message ||
+        'Registration failed. Please try again.';
 
       setSnackbar({
         open: true,
         message: errorMessage,
         severity: 'error'
       });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -157,6 +203,7 @@ const RegisterForm = () => {
             onChange={handleChange}
             error={!!errors.username}
             helperText={errors.username}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -168,6 +215,7 @@ const RegisterForm = () => {
             onChange={handleChange}
             error={!!errors.first_name}
             helperText={errors.first_name}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -179,6 +227,7 @@ const RegisterForm = () => {
             onChange={handleChange}
             error={!!errors.last_name}
             helperText={errors.last_name}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -191,6 +240,7 @@ const RegisterForm = () => {
             onChange={handleChange}
             error={!!errors.email}
             helperText={errors.email}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -203,6 +253,7 @@ const RegisterForm = () => {
             onChange={handleChange}
             error={!!errors.password}
             helperText={errors.password}
+            disabled={loading}
           />
           <TextField
             margin="normal"
@@ -215,6 +266,7 @@ const RegisterForm = () => {
             onChange={handleChange}
             error={!!errors.confirmPassword}
             helperText={errors.confirmPassword}
+            disabled={loading}
           />
 
           {/* Admin Checkbox */}
@@ -225,6 +277,7 @@ const RegisterForm = () => {
                 onChange={handleChange}
                 name="is_admin"
                 color="primary"
+                disabled={loading}
               />
             }
             label="Register as Administrator"
@@ -236,6 +289,7 @@ const RegisterForm = () => {
               fullWidth 
               margin="normal" 
               error={!!errors.account_type}
+              disabled={loading}
             >
               <InputLabel>Account Type</InputLabel>
               <Select
@@ -260,8 +314,9 @@ const RegisterForm = () => {
             fullWidth
             variant="contained"
             sx={{ mt: 3, mb: 2 }}
+            disabled={loading}
           >
-            Register
+            {loading ? 'Registering...' : 'Register'}
           </Button>
         </Box>
       </Box>
